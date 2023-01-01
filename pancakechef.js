@@ -20,31 +20,29 @@ app.get('/userActivity', async (req, res) => {
     const address = req.params.address;
     //1. Get all the pools the user has deposited tokens to
     const poolAddresses = await contract.getPastEvents('Deposit', {
-      filter: { user: address },
+      filter: { from: address },
       fromBlock: 0,
       toBlock: 'latest'
     }).then(events => events.map(event => event.returnValues.pid));
     // the pid is the the pool address, it is returned in the event
 
     //2. Get the total token amount the user has deposited in each pool
-    const poolBalances = await Promise.all(poolAddresses.map(async poolAddress => {
-      return contract.methods.balanceOf(address, poolAddress).call();
-    }));
+    // const poolBalances = await (poolAddresses.map(poolAddress => {
+    //   return contract.methods.balanceOf(address, poolAddress).call();
+    // }));
 
     //3. Get every instance where the user deposited or withdrew from a pool
     const activity = await contract.getPastEvents(['Deposit', 'Withdraw'], {
-      filter: { user: address },
+      filter: { from: address },
       fromBlock: 0,
       toBlock: 'latest'
     }).then(events => events.map(event => ({
-      type: event.event,
       pool: event.returnValues.pid,
       amount: event.returnValues.amount
     })));
 
     res.send({
       pools: poolAddresses,
-      balances: poolBalances,
       activity
     });
   } catch (error) {
