@@ -14,66 +14,46 @@ const url = 'https://bsc.getblock.io/06a86944-96a1-4d4f-bd5a-da3e066cf731/mainne
 const web3 = new Web3(new Web3.providers.HttpProvider(url));
 const contract = new web3.eth.Contract(contractabi, contractAddress);
 
-app.get('/api/:userAddress', (req, res) => {
-  // get the user address from the request parameters
-  const userAddress = req.params.userAddress
+const port = 3000;
 
-  // get the pair addresses that the user has created or provided tokens to
-  contract.getPastEvents(['PairCreated','Mint'], {
-    filter: {
-      sender: userAddress,
-    }
-  }, (error, events) => {
-    if (error) {
-      console.error(error)
-      res.sendStatus(500)
-      return
-    }
+app.get('/api/:userAddress', async (req, res) => {
+  try {
+    const userAddress = req.params.userAddress
 
-    // map the events to just the pair addresses
-    const pairs = events.map(event => event.returnValues.pair)
-
-    // get the total amount of tokens the user has provided to the pairs
-    contract.getPastEvents('Mint', {
+    //first i get all events where the user was the sender
+    const events = await contract.getPastEvents('allEvents', {
       filter: {
         sender: userAddress
       }
-    }, (error, events) => {
-      if (error) {
-        console.error(error)
-        res.sendStatus(500)
-        return
-      }
+    });
 
-      // sum the amount of tokens provided in each event
-      let totalTokensProvided = 0
-      events.forEach(event => {
-        totalTokensProvided += event.returnValues.amount0 + event.returnValues.amount1
-      })
+    // then i filter events by type
+    const pairCreatedEvents = events.filter(event => event.event === 'PairCreated');
+    const mintEvents = events.filter(event => event.event === 'Mint');
+    const burnEvents = events.filter(event => event.event === 'Burn');
 
-      // get the instances where the user provided or withdrew tokens from a liquidity pool or pair
-      contract.getPastEvents(['Mint', 'Burn', 'Swap'], {
-        filter: {
-          sender: userAddress
-        }
-      }, (error, events) => {
-        if (error) {
-          console.error(error)
-          res.sendStatus(500)
-          return
-        }
+    // map PairCreated events to just the pair addresses
+    const pairs = pairCreatedEvents.map(event => event.returnValues.pair);
 
-        // send the results as a response
-        res.send({
-          pairs,
-          totalTokensProvided,
-          events
-        })
-      })
-    })
-  })
-})
+    // sums the amount of tokens provided in each Mint event
+    let totalTokensProvided = 0;
+    mintEvents.forEach(event => {
+      totalTokensProvided += event.returnValues.amount0 + event.returnValues.amount1;
+    });
 
+    // response
+    res.send({
+      pairs,
+      totalTokensProvided,
+      events: [...mintEvents, ...burnEvents]
+    });
+  } catch (error) {
+    console.error(error);
+    res.sendStatus(500);
+  }
+});
+
+// start server
 app.listen(port, () => {
   console.log(`server listening on port ${port}`)
-})
+});
