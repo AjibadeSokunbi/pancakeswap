@@ -34,7 +34,7 @@ app.get('/user-activity/:address', async (req, res) => {
       });
       // Add the events to the array
       events = events.concat(blockEvents);
-      // Increment the fromBlock by 10000 for the next iteration
+      // Increment the fromBlock by 10000 
       fromBlock += 10000;
     }
 
