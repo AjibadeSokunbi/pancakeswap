@@ -16,40 +16,45 @@ const contract = new web3.eth.Contract(contractabi, contractAddress);
 
 const port = 3000;
 
-app.get('/api/:userAddress', async (req, res) => {
+app.get('/userActivity', async (req, res) => {
   try {
-    const userAddress = req.params.userAddress
+    const address = req.params.address;
 
-    //first i get all events where the user was the sender
-    const events = await contract.getPastEvents('allEvents', {
-      filter: {
-        sender: userAddress
-      }
-    });
+    // Start from block 24388485
+    let fromBlock = 10000;
+    // Get the current block height
+    const currentBlock = await web3.eth.getBlockNumber();
 
-    // then i filter events by type
-    const pairCreatedEvents = events.filter(event => event.event === 'PairCreated');
-    const mintEvents = events.filter(event => event.event === 'Mint');
-    const burnEvents = events.filter(event => event.event === 'Burn');
+    // Array to store all the events
+    let events = [];
+    while (fromBlock < currentBlock) {
+      // Get the events in the next 10,000 blocks
+      const blockEvents = await contract.getPastEvents(['Deposit', 'Withdraw'], {
+        filter: { from: address },
+        fromBlock: fromBlock,
+        toBlock: fromBlock + 10000
+      });
+      // Add the events to the array
+      events = events.concat(blockEvents);
+      // Increment the fromBlock by 10000 for the next iteration
+      fromBlock += 10000;
+    }
 
-    // map PairCreated events to just the pair addresses
-    const pairs = pairCreatedEvents.map(event => event.returnValues.pair);
+    // Process the events
+    const activity = events.map(event => ({
+      pool: event.returnValues.pid,
+      amount: event.returnValues.amount
+    }));
 
-    // sums the amount of tokens provided in each Mint event
-    let totalTokensProvided = 0;
-    mintEvents.forEach(event => {
-      totalTokensProvided += event.returnValues.amount0 + event.returnValues.amount1;
-    });
+    // Get all the pool addresses
+    const poolAddresses = activity.map(item => item.pool);
 
-    // response
     res.send({
-      pairs,
-      totalTokensProvided,
-      events: [...mintEvents, ...burnEvents]
+      pools: poolAddresses,
+      activity
     });
   } catch (error) {
-    console.error(error);
-    res.sendStatus(500);
+    res.status(500).send({ error: error.message });
   }
 });
 

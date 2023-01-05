@@ -1,56 +1,69 @@
 const express = require('express');
+const app = express();
 const Web3 = require('web3');
 
-const app = express();
-
-// abi of pancakeswap master chef contract
+// abi of pancakeswap masterstaking contract
 const contractabi = require("./pancake.json")
 
-// contract address of pancakeswap master chef contract
+// contract address of pancakeswap masterstaking contract
 const contractAddress = '0xa5f8C5Dbd5F286960b9d90548680aE5ebFf07652';
 
 // http provider configuration
-const url = 'https://bsc.getblock.io/06a86944-96a1-4d4f-bd5a-da3e066cf731/mainnet/';
+const url = 'https://bold-black-energy.bsc.discover.quiknode.pro/c2bf115e5d95e1ee7a40bef1eb2e9bef41222bfb/';
 
 const web3 = new Web3(new Web3.providers.HttpProvider(url));
 const contract = new web3.eth.Contract(contractabi, contractAddress);
 
-app.get('/userActivity', async (req, res) => {
+app.get('/user-activity/:address', async (req, res) => {
   try {
     const address = req.params.address;
-    //1. Get all the pools the user has deposited tokens to
-    const poolAddresses = await contract.getPastEvents('Deposit', {
-      filter: { from: address },
-      fromBlock: 0,
-      toBlock: 'latest'
-    }).then(events => events.map(event => event.returnValues.pid));
-    // the pid is the the pool address, it is returned in the event
 
-    //2. Get the total token amount the user has deposited in each pool
+    // Start from block 20000000
+    let fromBlock = 20000000;
+    // Get the current block height
+    const currentBlock = await web3.eth.getBlockNumber();
+
+    // Array to store all the events
+    let events = [];
+    while (fromBlock < currentBlock) {
+      // Get the events in the next 10,000 blocks
+      const blockEvents = await contract.getPastEvents(['Deposit', 'Withdraw'], {
+        filter: { from: address },
+        fromBlock: fromBlock,
+        toBlock: fromBlock + 10000
+      });
+      // Add the events to the array
+      events = events.concat(blockEvents);
+      // Increment the fromBlock by 10000 for the next iteration
+      fromBlock += 10000;
+    }
+
+    // Process the events
+    const activity = events.map(event => ({
+        type: event.event === 'Deposit' ? 'deposit' : 'withdrawal',
+        pool: event.returnValues.pid,
+        amount: event.returnValues.amount
+      }));
+
+    // Get all the pool addresses
+    const poolAddresses = new Set(activity.map(item => item.pool));
+
+    // total deposited
     // const poolBalances = await (poolAddresses.map(poolAddress => {
     //   return contract.methods.balanceOf(address, poolAddress).call();
     // }));
 
-    //3. Get every instance where the user deposited or withdrew from a pool
-    const activity = await contract.getPastEvents(['Deposit', 'Withdraw'], {
-      filter: { from: address },
-      fromBlock: 0,
-      toBlock: 'latest'
-    }).then(events => events.map(event => ({
-      pool: event.returnValues.pid,
-      amount: event.returnValues.amount
-    })));
-
     res.send({
-      pools: poolAddresses,
-      activity
+      pools: [...poolAddresses],
+      activity,
+      // poolBalances
     });
   } catch (error) {
-    res.status(500).send({ error: error.message });
+    console.error(error);
+    res.status(500).send({ error: 'Something went wrong' });
   }
 });
 
-//start
 app.listen(3000, () => {
   console.log('Server listening on port 3000');
 });
